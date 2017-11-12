@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="de-CH">
+<head>
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-10357230-5"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+
+        function gtag () {
+            dataLayer.push(arguments);
+        }
+
+        gtag('js', new Date());
+
+        gtag('config', 'UA-10357230-5');
+    </script>
+
+    <meta property="og:url" content="https://goetterstammbaum.xn--mhlemann-65a.ch/"/>
+    <meta property="og:type" content="article"/>
+    <meta property="og:title" content="Der griechische Götterstammbaum"/>
+    <meta property="og:author" content="Silvan Mühlemann"/>
+    <meta property="og:description"
+          content="Interaktive Grafik des griechischen Götterstambaums"/>
+    <meta property="og:image" content="https://goetterstammbaum.xn--mhlemann-65a.ch"/>
+
+
+    <link href='http://fonts.googleapis.com/css?family=Source+Sans+Pro:400' rel='stylesheet' type='text/css'>
+    <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet"
+          integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+    <script
+            src="https://code.jquery.com/jquery-3.2.1.min.js"
+            integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+            crossorigin="anonymous"></script>
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+
+    <meta charset="utf-8">
+    <style>
+
+        body {
+            overflow: hidden;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: 'Source Sans Pro', sans-serif;
+            background-color: black;
+            color: white
+        }
+        
+        a {
+            color: #999;
+            text-decoration: none;
+        }
+
+        .infobox {
+            box-sizing: border-box;
+            position: absolute;
+            width: 100%;
+            padding: 0 20px;
+            background-color: rgba(0, 0, 0, 0.5)
+        }
+
+        .links line {
+            stroke: #999;
+        }
+
+        circle.main {
+            overflow: hidden;
+            opacity: 0.7;
+        }
+
+        .highlighted circle.main {
+            opacity: 1;
+        }
+
+        text {
+            font: 10px sans-serif;
+            text-anchor: middle;
+            fill: white;
+        }
+
+        text.long-text {
+            font: 7px sans-serif;
+        }
+
+        svg {
+            cursor: -webkit-grab;
+        }
+
+        #controls {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            padding: 30px;
+            font-size: 30px;
+            color: #999;
+            cursor: pointer;
+        }
+
+        #controls i:hover {
+            color: white;
+
+        }
+
+    </style>
+</head>
+<body>
+<div class="infobox">
+    <h1>Der griechische Götterstammbaum</h1>
+    <p>Jeder Kreis entspricht einer Figur der griechischen Mythologie. Die Linien zeigen Eltern-Kind-Beziehungen. Bewege
+        die Maus über einen Kreis,
+        um deren Eltern zu zeigen. Ziehe an einem Kreis, um den Graphen neu anzuordnen. Mit dem Scrollrad kannst
+        du zoomen. Mit gedrückten Maustaste auf den Hintergrund kannst Du den Graphen verschieben. &middot; <a href="http://xn--mhlemann-65a.ch">Silvan
+            Mühlemann</a>, 12.
+        November 2017</p>
+</div>
+
+<div id="controls">
+    <i class="fa fa-search-plus zoom-button" id="zoom-in" aria-hidden="true"></i>
+    <i class="fa fa-search-minus zoom-button" id="zoom-out" aria-hidden="true"></i>
+</div>
+
+<svg style="width: 100vw;height: 100vh;"></svg>
+<script>
+
+    window.onload = function () {
+        var zoom = d3.zoom()
+            .scaleExtent([0.1, 10])
+            .on("zoom", zoomed);
+
+        var height = $('svg')[0].clientHeight,
+            width = $('svg')[0].clientWidth
+
+        var svg = d3.select("svg").call(zoom)
+
+        svg.append('defs').append('marker')
+            .attr('id', 'head')
+            .attr('orient', 'auto')
+            .attr('markerWidth', '2')
+            .attr('markerHeight', '4')
+            .attr('refX', '15.1')
+            .attr('refY', '1.9')
+            .append('path')
+            .attr('d', 'M0,0 V4 L3,1.5 Z')
+            .attr('fill', '#999')
+
+        container = svg.append('g')
+            .attr('id', 'container');
+
+        var color = d3.scaleOrdinal(d3.schemeCategory20);
+
+        var chargeFunct = d3.forceManyBody().strength(-200);
+
+        var simulation = d3.forceSimulation()
+            .alpha(1)
+            .alphaDecay(0.01)
+            .force("link", d3.forceLink().id(function (d) {
+                return d.id;
+            }).distance(150))
+            .force("charge", chargeFunct)
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(function (d) {
+                return 30
+            }));
+
+        d3.json("/data.json", function (error, graph) {
+            if (error) throw error;
+
+            var link = container.append("g")
+                .attr("class", "links")
+                .selectAll("line")
+                .data(graph.links)
+                .enter()
+                .append("line")
+                .attr('marker-end', 'url(#head)')
+                .attr("stroke-width", "2");
+
+            var linkedByIndex = {}
+            d3.selectAll("line").each(function (d) {
+                linkedByIndex[d.source + "," + d.target] = 1;
+            });
+
+            // find if two nodes are neighbors
+            function neighboring (a, b) {
+                return linkedByIndex[a.id + "," + b.id] || a.id === b.id;
+            }
+
+            svg.append('rect')
+                .attr('y', height - 100)
+                .attr('width', width)
+                .attr('height', 100)
+                .attr('fill', 'rgba(0,0,0,0.5)');
+
+            //////////////////////
+            // make legend
+            var nodeTypes = []
+            graph.nodes.forEach(function (n) {
+                nodeTypes[n.group] = n.label[0]
+            })
+
+
+            var legend = svg.append('g')
+                .attr('id', 'legend')
+                .selectAll("g")
+                .data(nodeTypes)
+                .enter()
+                .append('g')
+                .attr('data-group', function (d, i) {
+                    return i
+                })
+
+            legend
+                .attr('transform', function (d, i) {
+                    return 'translate(' + (55 * (1 + i)) + ', ' + (height - 50) + ')'
+                })
+
+            makeCircle(legend, true);
+
+            //////////////////////
+            // add nodes and links
+            var node = container.append("g")
+                .attr("class", "nodes")
+                .selectAll("circle")
+                .data(graph.nodes)
+                .enter().append("g").attr("class", "node")
+            makeCircle(node, false);
+
+            node.on("mouseover", function (d) {
+                var thisNode = d; // where nodeObject is the javascript object for the node, it's probably called "d" in your function.
+                d3.selectAll("line")
+                    .style("stroke", function (d) {
+                        return d.source === thisNode ? "white" : "#999";
+                    })
+
+                d3.selectAll(".node").classed("highlighted", function (o) {
+                    return neighboring(d, o);
+                });
+                $('#legend g[data-group=' + d.group + ']').addClass('highlighted')
+
+            }).on("mouseout", function (d) {
+                d3.select(this).select('circle').attr("r", 25)
+                d3.selectAll("line")
+                    .style("stroke", "#999");
+
+                d3.selectAll(".node").classed("highlighted", false);
+                $('#legend g').removeClass('highlighted')
+
+            })
+
+            node.call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended))
+
+            simulation
+                .nodes(graph.nodes)
+                .on("tick", ticked);
+
+            simulation.force("link")
+                .links(graph.links);
+
+            function ticked () {
+                link
+                    .attr("x1", function (d) {
+                        return d.source.x;
+                    })
+                    .attr("y1", function (d) {
+                        return d.source.y;
+                    })
+                    .attr("x2", function (d) {
+                        return d.target.x;
+                    })
+                    .attr("y2", function (d) {
+                        return d.target.y;
+                    });
+
+                node
+                    .attr("transform", function (d) {
+                        return "translate(" + d.x + "," + d.y + ")";
+                    })
+            }
+
+            function makeCircle (node, forLegend) {
+                node.append("circle")
+                    .attr("class", "matte")
+                    .attr("r", 25)
+                    .attr("fill", "black")
+
+                node.append("circle")
+                    .attr("class", "main")
+                    .attr("r", 25)
+                    .attr("fill", function (d, i) {
+                        return color(forLegend ? i : d.group);
+                    })
+
+                node.append("text")
+                    .attr('dy', 4)
+                    .classed('long-text', function (d) {
+                        return forLegend ? d.length > 7 : d.name.length > 7;
+                    })
+                    .text(function (d, i) {
+                        return forLegend ? d : d.name
+                    })
+            }
+        });
+
+        function dragstarted (d) {
+            if (!d3.event.active) simulation.alphaTarget(0.1).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged (d) {
+            d.fx = d3.event.x;
+            d.fy = d3.event.y;
+        }
+
+        function dragended (d) {
+            if (!d3.event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+
+        function zoomed () {
+            container.attr("transform", d3.event.transform);
+        }
+
+        d3.select('#zoom-in').on('click', function () {
+            // Smooth zooming
+            zoom.scaleBy(svg.transition().duration(750), 1.3);
+        });
+
+        d3.select('#zoom-out').on('click', function () {
+            // Ordinal zooming
+            zoom.scaleBy(svg.transition().duration(750), 1 / 1.3);
+        });
+    }
+
+</script>
+</body>
+</html>
