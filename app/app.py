@@ -8,15 +8,18 @@ sleep(10)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'Grovverg53s'
 
-connected = False
-while not connected:
-    try:
-        driver = GraphDatabase.driver("bolt://neo4j:7687", auth=basic_auth("neo4j", "coffy"))
-        connected = True
-    except neo4j.exceptions.ServiceUnavailable:
-        sleep(5)
+ENABLE_NEO4J=False
 
-session = driver.session()
+if ENABLE_NEO4J:
+    connected = False
+    while not connected:
+        try:
+            driver = GraphDatabase.driver("bolt://neo4j:7687", auth=basic_auth("neo4j", "coffy"))
+            connected = True
+        except neo4j.exceptions.ServiceUnavailable:
+            sleep(5)
+
+    session = driver.session()
 
 
 @app.route('/static/<path:path>')
@@ -62,12 +65,13 @@ def data():
 
 
 if __name__ == '__main__':
-    # Clean the database
-    session.run("MATCH(n) DETACH DELETE n")
+    if ENABLE_NEO4J:
+        # Clean the database
+        session.run("MATCH(n) DETACH DELETE n")
 
-    # Populate the database
-    with open("goetter_DE.cyp") as f:
-        session.run(f.read())
+        # Populate the database
+        with open("goetter_DE.cyp") as f:
+            session.run(f.read())
 
-    app.debug = True
+    app.debug = False
     app.run(host='0.0.0.0', port=9090)
